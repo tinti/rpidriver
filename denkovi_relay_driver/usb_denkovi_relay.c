@@ -43,6 +43,10 @@ struct usb_dkvr {
 	struct usb_interface		*interface;			/* the interface for this device */
 	struct semaphore		limit_sem;			/* limiting the number of writes in progress */
 
+        struct urb              	*cntl_urb;      		/* URB for control msg */
+        struct usb_ctrlrequest  	*cntl_req;      		/* req for control msg */
+        unsigned char           	*cntl_buffer;   		/* buffer for control msg */
+
 	__u8				bulk_out_endpointAddr;		/* the address of the bulk out endpoint */
 	struct usb_anchor               submitted;
 
@@ -74,6 +78,18 @@ static void dkvr_delete(struct kref *kref)
 	struct usb_dkvr *dev = to_dkvr_dev(kref);
 
 	usb_put_dev(dev->udev);
+
+	/* free control buffers */
+	if (dev->cntl_urb) {
+		usb_kill_urb(dev->cntl_urb);
+		kfree(dev->cntl_req);
+		if (dev->cntl_buffer)
+			usb_free_coherent(dev->udev, 8, dev->cntl_buffer,
+					  dev->cntl_buffer,
+					  dev->cntl_urb->transfer_dma);
+		usb_free_urb(dev->cntl_urb);
+	}
+
 	kfree(dev);
 }
 
@@ -311,6 +327,30 @@ static int dkvr_probe(struct usb_interface *interface,
 			"Could not find both bulk-in and bulk-out endpoints\n");
 		goto error;
 	}
+
+	/* allocate control urb */
+	dev->cntl_urb = usb_alloc_urb(0, GFP_KERNEL);
+	if (!dev->cntl_urb) {
+		dev_err(&interface->dev, "Could not allocate cntl_buffer\n");
+		goto error;
+	}
+
+	/* allocate buffer for control req */
+	dev->cntl_req = kmalloc(8, GFP_KERNEL);
+	if (!dev->cntl_req) {
+		dev_err(&interface->dev, "Could not allocate cntl_req\n");
+		goto error;
+	}
+
+	/* allocate buffer for control msg */
+	dev->cntl_buffer = usb_alloc_coherent(dev->udev, 8, GFP_KERNEL,
+					      &dev->cntl_urb->transfer_dma);
+	if (!dev->cntl_buffer) {
+		dev_err(&interface->dev, "Could not allocate cntl_buffer\n");
+		goto error;
+	}
+
+
 
 	/* save our data pointer in this interface device */
 	usb_set_intfdata(interface, dev);

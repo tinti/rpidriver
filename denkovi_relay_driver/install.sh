@@ -1,5 +1,6 @@
 #!/bin/bash
-DEV=3-4:1.0
+#DEV=3-4:1.0
+DEV=3-1:1.0
 
 echo -n $DEV > /sys/bus/usb/drivers/usbdkvr/unbind || echo "Not bind at DENKOVI"
 echo -n $DEV > /sys/bus/usb/drivers/ftdi_sio/unbind || echo "Not bind at FTDI"
